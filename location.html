@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Get User Location</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            font-family: "Poppins", sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            background: linear-gradient(45deg, #0076ec);
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 80vw;
+            background-color: aliceblue;
+            padding: 3em 1.8em;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 0.6em;
+            box-shadow: 0 0.6em 2.5em rgba(0, 7, 70, 0.2);
+        }
+
+        .container img {
+            width: 100px;
+            margin-bottom: 1em;
+        }
+
+        #location-details {
+            font-size: 1.75em;
+            text-align: center;
+            margin: 1em 0 1.7em 0;
+            color: #021d38;
+            font-weight: 500;
+        }
+
+        .container button {
+            display: block;
+            margin: auto;
+            background-color: #42a1ff;
+            color: aliceblue;
+            border: none;
+            font-size: 1.25em;
+            padding: 1em 2.5em;
+            border-radius: 0.25em;
+            cursor: pointer;
+        }
+
+        .loading-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .loading-spinner {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .continue-button {
+            margin-top: 1em;
+            background-color: #42a1ff;
+            color: aliceblue;
+            border: none;
+            font-size: 1.25em;
+            padding: 1em 2.5em;
+            border-radius: 0.25em;
+            cursor: pointer;
+        }
+
+        .continue-button:hover {
+            background-color: #0076ec;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="images/location.png"/>
+        <div id="location-details">
+            Click on 'Get Location' Button
+        </div>
+        <button id="get-location">Get Location</button>
+        <button class="continue-button" id="continue-btn" style="display: none;"
+            data-city=""
+            data-state=""
+            data-country="">
+            Continue
+        </button>
+
+    </div>
+
+    <div class="loading-screen" id="loading-screen">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <script>
+        let locationButton = document.getElementById("get-location");
+        let locationDiv = document.getElementById("location-details");
+        let loadingScreen = document.getElementById("loading-screen");
+        let continueButton = document.getElementById("continue-btn");
+
+        const staticLocation = {
+            lat: 22.6173041, 
+            lon: 88.3015041
+        };
+
+        locationButton.addEventListener("click", () => {
+            loadingScreen.style.display = "flex"; // Show loading screen
+            setTimeout(() => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(showLocation, checkError);
+                }
+                else {
+                    locationDiv.innerText = "The browser Does Not Support Geolocation";
+                    loadingScreen.style.display = "none"; // Hide loading screen on error
+                }
+            }, 2000); // Delay for 2 seconds
+        });
+
+        continueButton.addEventListener("click", () => {
+            const city = continueButton.getAttribute("data-city");
+            const state = continueButton.getAttribute("data-state");
+            const country = continueButton.getAttribute("data-country");
+
+            // Send data to save_location.php
+            fetch('save_location.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ city, state, country }),
+            })
+            .then(response => {
+                // Handle response
+                console.log(response);
+                // Redirect to the desired page
+                window.location.href = "http://localhost/food-order/";
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+
+        const checkError = (error) => {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    locationDiv.innerText = "Please allow access to Location";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    locationDiv.innerText = "Location Information Unavailable";
+                    break;
+                case error.TIMEOUT:
+                    locationDiv.innerText = "The request to get the user Location timed Out";
+            }
+            loadingScreen.style.display = "none"; // Hide loading screen on error
+        };
+
+        const showLocation = async (position) => {
+            let response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${position.coords.latitude}&lon=${position.coords.longitude}&format=json`
+            );
+            let data = await response.json();
+            locationDiv.innerText = `${data.address.city}, ${data.address.state}, ${data.address.country}`;
+
+            const distance = calculateDistance(position.coords.latitude, position.coords.longitude, staticLocation.lat, staticLocation.lon);
+            locationDiv.innerText += `\nDistance from Restaurant's location: ${distance} km`;
+
+            if (distance < 6) {
+                continueButton.style.display = "block"; // Show continue button
+                continueButton.setAttribute("data-city", data.address.city);
+                continueButton.setAttribute("data-state", data.address.state);
+                continueButton.setAttribute("data-country", data.address.country);
+            } else {
+                locationDiv.innerText += "\nNo available branches nearby.";
+            }
+            loadingScreen.style.display = "none"; // Hide loading screen after getting location
+        };
+        const calculateDistance = (lat1, lon1, lat2, lon2) => {
+            const R = 6371; // Radius of the Earth in km
+            const dLat = (lat2 - lat1) * (Math.PI / 180); // Convert degrees to radians
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c; // Distance in km
+            return distance.toFixed(2); // Rounded to 2 decimal places
+        };
+    </script>
+</body>
+</html>
